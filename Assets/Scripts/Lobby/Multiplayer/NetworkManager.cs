@@ -17,7 +17,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     public string PlayerName;
     public static bool ReconnectToRegion;
 
-    public GameObject playerPrefab;
+    //public GameObject playerPrefab;
     public static List<SessionInfo> CurrentSessionList = new List<SessionInfo>();
 
     public static event Action OnPlayerJoinedEvent;
@@ -70,8 +70,8 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     {
         if (player == runner.LocalPlayer)
         {
-            NetworkObject playerNetworkObject = runner.Spawn(playerPrefab, spawnPos, Quaternion.identity, player);
-            runner.SetPlayerObject(player, playerNetworkObject);
+            //NetworkObject playerNetworkObject = runner.Spawn(playerPrefab, spawnPos, Quaternion.identity, player);
+            //runner.SetPlayerObject(player, playerNetworkObject);
         }
     }
 

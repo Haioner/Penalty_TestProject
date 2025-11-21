@@ -4,53 +4,63 @@ using Fusion;
 
 public class PlayerSpawner : NetworkBehaviour
 {
-    [Header("Player Prefabs")]
-    [SerializeField] private GameObject beaterPrefab;
-    [SerializeField] private GameObject goalKeeperPrefab;
-
-    [Header("Spawn Positions")]
-    [SerializeField] private Transform beaterSpawnPoint;
-    [SerializeField] private Transform goalKeeperSpawnPoint;
+    [Header("Player Prefab")]
+    [SerializeField] private GameObject playerPrefab;
 
     private bool hasSpawned = false;
+    private List<PlayerController> spawnedPlayers = new List<PlayerController>();
 
-    public void SpawnPlayersWithClasses(Dictionary<PlayerRef, PlayerClass> assignments)
+    public void SpawnPlayers()
     {
         if (!Object.HasStateAuthority || hasSpawned)
             return;
-
         hasSpawned = true;
 
-        foreach (var assignment in assignments)
+        List<PlayerRef> players = new List<PlayerRef>(Runner.ActivePlayers);
+        for (int i = 0; i < players.Count; i++)
         {
-            PlayerRef player = assignment.Key;
-            PlayerClass playerClass = assignment.Value;
-
-            GameObject prefabToSpawn = null;
-            Vector3 spawnPosition = Vector3.zero;
-
-            if (playerClass == PlayerClass.Beater)
-            {
-                prefabToSpawn = beaterPrefab;
-                spawnPosition = beaterSpawnPoint != null ? beaterSpawnPoint.position : Vector3.zero;
-            }
-            else if (playerClass == PlayerClass.GoalKeeper)
-            {
-                prefabToSpawn = goalKeeperPrefab;
-                spawnPosition = goalKeeperSpawnPoint != null ? goalKeeperSpawnPoint.position : Vector3.zero;
-            }
-
-            if (prefabToSpawn != null)
-            {
-                NetworkObject playerNetworkObject = Runner.Spawn(
-                    prefabToSpawn,
-                    spawnPosition,
-                    Quaternion.identity,
-                    player
-                );
-
-                Runner.SetPlayerObject(player, playerNetworkObject);
-            }
+            PlayerRef player = players[i];
+            NetworkObject playerNetworkObject = Runner.Spawn(
+                playerPrefab, 
+                transform.position, 
+                Quaternion.identity, 
+                player
+            );
+            RPC_NotifyPlayerSpawned(player, playerNetworkObject);
         }
+
+        AssignRandomRoles();
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_NotifyPlayerSpawned(PlayerRef player, NetworkObject playerNetworkObject)
+    {
+        PlayerController playerController = playerNetworkObject.GetComponent<PlayerController>();
+        if (playerController != null)
+        {
+            spawnedPlayers.Add(playerController);
+        }
+
+        if (player == Runner.LocalPlayer)
+        {
+            Runner.SetPlayerObject(player, playerNetworkObject);
+            
+            if (playerController != null)
+                playerController.InitializePlayer();
+        }
+    }
+
+    private void AssignRandomRoles()
+    {
+        if (spawnedPlayers.Count < 2)
+            return;
+
+        int beaterIndex = Random.Range(0, 2);
+        int goalKeeperIndex = 1 - beaterIndex;
+
+        spawnedPlayers[beaterIndex].SetRole(PlayerRole.Beater);
+        spawnedPlayers[goalKeeperIndex].SetRole(PlayerRole.GoalKeeper);
+
+        Debug.Log($"Roles assigned: Player {beaterIndex} = Beater, Player {goalKeeperIndex} = GoalKeeper");
     }
 }
