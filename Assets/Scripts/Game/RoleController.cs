@@ -5,14 +5,17 @@ public class RoleController : NetworkBehaviour
     private PrecisionBar precisionBar;
     private ShotTargetManager targetManager;
     private PlayerController playerController;
+    private PlayerRole currentRole = PlayerRole.None;
 
     private void Awake()
     {
         playerController = GetComponent<PlayerController>();
     }
 
-    public void StartRole(PlayerRole currentRole)
+    public void StartRole(PlayerRole newRole)
     {
+        currentRole = newRole;
+
         if (precisionBar == null)
             precisionBar = FindFirstObjectByType<PrecisionBar>();
 
@@ -23,6 +26,14 @@ public class RoleController : NetworkBehaviour
             StartBeater();
         else if (currentRole == PlayerRole.GoalKeeper)
             StartGoalKeeper();
+    }
+
+    public void RestartRole()
+    {
+        if (currentRole != PlayerRole.None)
+        {
+            StartRole(currentRole);
+        }
     }
 
     private void StartBeater()
@@ -52,4 +63,3 @@ public class RoleController : NetworkBehaviour
             targetManager.DisableTargets();
     }
 }
-

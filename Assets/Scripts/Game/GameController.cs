@@ -35,7 +35,14 @@ public class GameController : NetworkBehaviour
     [Networked] private PlayerChoice beaterChoice { get; set; }
     [Networked] private PlayerChoice goalKeeperChoice { get; set; }
 
-    private Dictionary<PlayerRef, string> players = new Dictionary<PlayerRef, string>();
+    private class PlayerData
+    {
+        public PlayerRef playerRef;
+        public string playerName;
+        public PlayerController playerController;
+    }
+
+    private List<PlayerData> players = new List<PlayerData>();
 
     public Vector3 GetPositionForRole(PlayerRole role)
     {
@@ -68,18 +75,23 @@ public class GameController : NetworkBehaviour
         StartNewTurn();
     }
 
-    public void RegisterPlayerName(PlayerRef playerRef, string name)
+    public void RegisterPlayer(PlayerRef playerRef, string name, PlayerController controller)
     {
-        RPC_RegisterPlayerName(playerRef, name);
+        RPC_RegisterPlayer(playerRef, name, controller);
     }
 
     [Rpc(RpcSources.All, RpcTargets.All)]
-    private void RPC_RegisterPlayerName(PlayerRef playerRef, string name)
+    private void RPC_RegisterPlayer(PlayerRef playerRef, string name, PlayerController controller)
     {
-        if (!players.ContainsKey(playerRef))
+        if (players.FindIndex(p => p.playerRef == playerRef) == -1)
         {
-            players.Add(playerRef, name);
-            Debug.Log($"Registered player {playerRef} with name {name}");
+            players.Add(new PlayerData
+            {
+                playerRef = playerRef,
+                playerName = name,
+                playerController = controller
+            });
+            Debug.Log($"[GameController] Registered player {playerRef} - Name: {name}, Controller: {controller != null}");
         }
     }
 
@@ -108,32 +120,26 @@ public class GameController : NetworkBehaviour
 
     private PlayerRef GetCurrentBeaterPlayer()
     {
-        int currentRound = currentTurn / 2;
-        List<PlayerRef> playerRefs = new List<PlayerRef>(players.Keys);
-        
-        if (currentRound < ROUNDS_PER_SIDE)
+        foreach (var playerData in players)
         {
-            return currentTurn % 2 == 0 ? playerRefs[0] : playerRefs[1];
+            if (playerData.playerController != null && playerData.playerController.Role == PlayerRole.Beater)
+            {
+                return playerData.playerRef;
+            }
         }
-        else
-        {
-            return currentTurn % 2 == 0 ? playerRefs[1] : playerRefs[0];
-        }
+        return PlayerRef.None;
     }
 
     private PlayerRef GetCurrentGoalKeeperPlayer()
     {
-        int currentRound = currentTurn / 2;
-        List<PlayerRef> playerRefs = new List<PlayerRef>(players.Keys);
-        
-        if (currentRound < ROUNDS_PER_SIDE)
+        foreach (var playerData in players)
         {
-            return currentTurn % 2 == 0 ? playerRefs[1] : playerRefs[0];
+            if (playerData.playerController != null && playerData.playerController.Role == PlayerRole.GoalKeeper)
+            {
+                return playerData.playerRef;
+            }
         }
-        else
-        {
-            return currentTurn % 2 == 0 ? playerRefs[0] : playerRefs[1];
-        }
+        return PlayerRef.None;
     }
 
     public void SubmitBeaterChoice(PlayerRef player, ShotHorizontalPos horizontalPos, ShotVerticalPos verticalPos, PrecisionZone precision)
@@ -239,27 +245,41 @@ public class GameController : NetworkBehaviour
         if (!Object.HasStateAuthority)
             return;
 
-        bool isSaved = CheckSave(beaterChoice, goalKeeperChoice);
         bool isMiss = beaterChoice.precision == PrecisionZone.Miss;
+        bool isSaved = isMiss ? false : CheckSave(beaterChoice, goalKeeperChoice);
         bool isGoal = !isMiss && !isSaved;
 
-        List<PlayerRef> playerRefs = new List<PlayerRef>(players.Keys);
+        PlayerRef beaterPlayer = GetCurrentBeaterPlayer();
+        PlayerRef goalkeeperPlayer = GetCurrentGoalKeeperPlayer();
+
+        Debug.Log($"[ProcessTurn] === ROUND {currentTurn + 1} ===");
+        Debug.Log($"[ProcessTurn] Beater: {GetPlayerNameByRef(beaterPlayer)} ({beaterPlayer}) | Goalkeeper: {GetPlayerNameByRef(goalkeeperPlayer)} ({goalkeeperPlayer})");
+        Debug.Log($"[ProcessTurn] Shot: {beaterChoice.horizontalPos}/{beaterChoice.verticalPos} (Precision: {beaterChoice.precision})");
+        Debug.Log($"[ProcessTurn] Dive: {goalKeeperChoice.horizontalPos}/{goalKeeperChoice.verticalPos}");
+        Debug.Log($"[ProcessTurn] Result - Miss: {isMiss}, Saved: {isSaved}, GOAL: {isGoal}");
 
         if (isGoal)
         {
-            PlayerRef beaterPlayer = GetCurrentBeaterPlayer();
-            if (beaterPlayer == playerRefs[0])
+            int beaterPlayerIndex = players.FindIndex(p => p.playerRef == beaterPlayer);
+            
+            int scoreBefore1 = player1Score;
+            int scoreBefore2 = player2Score;
+            
+            if (beaterPlayerIndex == 0)
+            {
                 player1Score++;
+                Debug.Log($"<color=green>[⚽ GOAL!] {GetPlayerNameByRef(beaterPlayer)} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
+            }
             else
+            {
                 player2Score++;
+                Debug.Log($"<color=green>[⚽ GOAL!] {GetPlayerNameByRef(beaterPlayer)} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
+            }
         }
-        else if (isSaved)
+        else
         {
-            PlayerRef goalKeeperPlayer = GetCurrentGoalKeeperPlayer();
-            if (goalKeeperPlayer == playerRefs[0])
-                player1Score++;
-            else
-                player2Score++;
+            string reason = isMiss ? "MISSED" : "SAVED";
+            Debug.Log($"<color=yellow>[❌ NO GOAL] {reason}! Score unchanged: {player1Score}-{player2Score}</color>");
         }
 
         RPC_ShowTurnResult(beaterChoice.horizontalPos, beaterChoice.verticalPos, beaterChoice.precision, 
@@ -267,13 +287,22 @@ public class GameController : NetworkBehaviour
 
         currentTurn++;
 
-        int totalRounds = currentTurn / 2;
-        if (totalRounds >= (ROUNDS_PER_SIDE * 2))
+        if (currentTurn >= (ROUNDS_PER_SIDE * 2))
         {
             CheckGameEnd();
         }
         else
         {
+            if (currentTurn == ROUNDS_PER_SIDE)
+            {
+                Debug.Log($"<color=cyan>[🔄 SWAP] After {ROUNDS_PER_SIDE} rounds, players are swapping roles!</color>");
+                RPC_SwapRoles();
+            }
+            else
+            {
+                RPC_RestartTurnForPlayers();
+            }
+            
             StartNewTurn();
         }
     }
@@ -322,6 +351,40 @@ public class GameController : NetworkBehaviour
         gameStarted = false;
     }
 
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_RestartTurnForPlayers()
+    {
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (PlayerController player in allPlayers)
+        {
+            if (player.Role != PlayerRole.None)
+            {
+                RoleController roleController = player.GetComponent<RoleController>();
+                if (roleController != null)
+                {
+                    roleController.RestartRole();
+                }
+            }
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_SwapRoles()
+    {
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (PlayerController player in allPlayers)
+        {
+            if (player.Role == PlayerRole.Beater)
+            {
+                player.SetRole(PlayerRole.GoalKeeper);
+            }
+            else if (player.Role == PlayerRole.GoalKeeper)
+            {
+                player.SetRole(PlayerRole.Beater);
+            }
+        }
+    }
+
     public override void Render()
     {
         if (!gameStarted)
@@ -348,31 +411,38 @@ public class GameController : NetworkBehaviour
 
         if (roundText != null)
         {
-            int currentRound = (currentTurn / 2) + 1;
-            string roundLabel = suddenDeath ? "SUDDEN DEATH" : $"Turn {currentTurn + 1} (Round {currentRound})";
+            int currentRoundDisplay = currentTurn + 1;
+            string roundLabel = suddenDeath ? "SUDDEN DEATH" : $"Round {currentRoundDisplay}";
             roundText.text = roundLabel;
         }
     }
 
     private string GetPlayerName(int playerIndex)
     {
-        if (players.Count <= playerIndex)
+        if (players.Count <= playerIndex || playerIndex < 0)
         {
             return $"Player{playerIndex + 1}";
         }
 
-        List<PlayerRef> playerRefs = new List<PlayerRef>(players.Keys);
-        PlayerRef playerRef = playerRefs[playerIndex];
+        PlayerData playerData = players[playerIndex];
         
-        if (players.ContainsKey(playerRef))
+        if (!string.IsNullOrEmpty(playerData.playerName))
         {
-            string name = players[playerRef];
-            if (!string.IsNullOrEmpty(name))
-            {
-                return name;
-            }
+            return playerData.playerName;
         }
 
         return $"Player{playerIndex + 1}";
+    }
+
+    private string GetPlayerNameByRef(PlayerRef playerRef)
+    {
+        PlayerData playerData = players.Find(p => p.playerRef == playerRef);
+        
+        if (playerData != null && !string.IsNullOrEmpty(playerData.playerName))
+        {
+            return playerData.playerName;
+        }
+        
+        return "Unknown";
     }
 }

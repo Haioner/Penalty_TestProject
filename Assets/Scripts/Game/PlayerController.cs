@@ -33,7 +33,7 @@ public class PlayerController : NetworkBehaviour
         string name = NetworkManager.Instance.PlayerName;
         playerName = name;
         RPC_UpdatePlayerName(name);
-        gameController.RegisterPlayerName(Runner.LocalPlayer, name);
+        gameController.RegisterPlayer(Runner.LocalPlayer, name, this);
         pinObject.SetActive(true);
     }
 
