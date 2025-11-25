@@ -12,6 +12,24 @@ public class ShotTargetManager : MonoBehaviour
     private NetworkRunner runner;
     private bool canInteract = false;
 
+    public Vector3 GetTargetPosition(ShotHorizontalPos horizontal, ShotVerticalPos vertical)
+    {
+        if (shotTargets == null)
+            return Vector3.zero;
+
+        foreach (ShotItem target in shotTargets)
+        {
+            if (target != null && 
+                target.HorizontalPosition == horizontal && 
+                target.VerticalPosition == vertical)
+            {
+                return target.transform.position;
+            }
+        }
+
+        return Vector3.zero;
+    }
+
     private void Start()
     {
         SetTargetsActive(false);

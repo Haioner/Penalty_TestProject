@@ -13,6 +13,7 @@ public class PlayerController : NetworkBehaviour
     [Networked] public string playerName { get; set; }
     [SerializeField] private TextMeshPro playerNameText;
     [SerializeField] private GameObject pinObject;
+    [SerializeField] private CharacterAnimator characterAnimator;
 
     private GameController gameController;
     private RoleController roleController;

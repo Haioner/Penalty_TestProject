@@ -6,6 +6,7 @@ public class RoleController : NetworkBehaviour
     private ShotTargetManager targetManager;
     private PlayerController playerController;
     private PlayerRole currentRole = PlayerRole.None;
+    private bool waitingForGameStart = false;
 
     private void Awake()
     {
@@ -22,6 +23,16 @@ public class RoleController : NetworkBehaviour
         if (targetManager == null)
             targetManager = FindFirstObjectByType<ShotTargetManager>();
 
+        waitingForGameStart = true;
+    }
+
+    public void EnableRoleControlsAfterCountdown()
+    {
+        if (!waitingForGameStart)
+            return;
+
+        waitingForGameStart = false;
+
         if (currentRole == PlayerRole.Beater)
             StartBeater();
         else if (currentRole == PlayerRole.GoalKeeper)
@@ -32,7 +43,10 @@ public class RoleController : NetworkBehaviour
     {
         if (currentRole != PlayerRole.None)
         {
-            StartRole(currentRole);
+            if (currentRole == PlayerRole.Beater)
+                StartBeater();
+            else if (currentRole == PlayerRole.GoalKeeper)
+                StartGoalKeeper();
         }
     }
 

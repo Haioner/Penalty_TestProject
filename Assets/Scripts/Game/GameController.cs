@@ -6,7 +6,6 @@ using TMPro;
 public class GameController : NetworkBehaviour
 {
     private const int ROUNDS_PER_SIDE = 5;
-    private const float TURN_TIME = 10f;
 
     [Header("Player Positions")]
     [SerializeField] private Transform beaterPosition;
@@ -16,8 +15,17 @@ public class GameController : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI scoreText;
     [SerializeField] private TextMeshProUGUI roundText;
+    [SerializeField] private TextMeshProUGUI waitingText;
+    [SerializeField] private TextMeshProUGUI countdownText;
+
+    [Header("Turn Execution")]
+    [SerializeField] private float TURN_TIME = 10f;
+    [SerializeField] private TurnExecutor turnExecutor;
 
     [Networked] private TickTimer turnTimer { get; set; }
+    [Networked] private TickTimer countdownTimer { get; set; }
+    [Networked] private int countdownValue { get; set; }
+    [Networked] private NetworkBool isCountingDown { get; set; }
     [Networked] private int currentTurn { get; set; }
     [Networked] private int player1Score { get; set; }
     [Networked] private int player2Score { get; set; }
@@ -63,7 +71,12 @@ public class GameController : NetworkBehaviour
             player2Score = 0;
             gameStarted = false;
             suddenDeath = false;
+            isCountingDown = false;
+            countdownValue = 3;
         }
+
+        if (countdownText != null)
+            countdownText.gameObject.SetActive(false);
     }
 
     public void StartGame()
@@ -71,8 +84,10 @@ public class GameController : NetworkBehaviour
         if (!Object.HasStateAuthority)
             return;
 
-        gameStarted = true;
-        StartNewTurn();
+        isCountingDown = true;
+        countdownValue = 3;
+        countdownTimer = TickTimer.CreateFromSeconds(Runner, 1f);
+        RPC_ShowCountdown(countdownValue);
     }
 
     public void RegisterPlayer(PlayerRef playerRef, string name, PlayerController controller)
@@ -114,6 +129,9 @@ public class GameController : NetworkBehaviour
             precision = PrecisionZone.Medium, 
             hasChosen = false 
         };
+
+        if (turnExecutor != null)
+            turnExecutor.ResetForNewTurn();
 
         turnTimer = TickTimer.CreateFromSeconds(Runner, TURN_TIME);
     }
@@ -190,21 +208,120 @@ public class GameController : NetworkBehaviour
     {
         if (beaterChoice.hasChosen && goalKeeperChoice.hasChosen)
         {
+            RPC_HideWaitingText();
             ProcessTurn();
+        }
+        else
+        {
+            RPC_UpdateWaitingText();
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_UpdateWaitingText()
+    {
+        if (waitingText != null)
+        {
+            waitingText.gameObject.SetActive(true);
+            waitingText.text = "Waiting other player...";
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_ShowCountdown(int value)
+    {
+        if (countdownText != null)
+        {
+            countdownText.gameObject.SetActive(true);
+            
+            if (value > 0)
+                countdownText.text = value.ToString();
+            else
+                countdownText.text = "GO!";
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_HideCountdown()
+    {
+        if (countdownText != null)
+        {
+            countdownText.gameObject.SetActive(false);
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_EnablePlayerControls()
+    {
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (PlayerController player in allPlayers)
+        {
+            RoleController roleController = player.GetComponent<RoleController>();
+            if (roleController != null)
+            {
+                roleController.EnableRoleControlsAfterCountdown();
+            }
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_HideWaitingText()
+    {
+        if (waitingText != null)
+        {
+            waitingText.gameObject.SetActive(false);
         }
     }
 
     public override void FixedUpdateNetwork()
     {
-        if (!gameStarted || !Object.HasStateAuthority)
+        if (!Object.HasStateAuthority)
             return;
 
-        if (turnTimer.Expired(Runner))
+        if (isCountingDown)
+        {
+            if (countdownTimer.Expired(Runner))
+            {
+                countdownValue--;
+
+                if (countdownValue > 0)
+                {
+                    RPC_ShowCountdown(countdownValue);
+                    countdownTimer = TickTimer.CreateFromSeconds(Runner, 1f);
+                }
+                else if (countdownValue == 0)
+                {
+                    RPC_ShowCountdown(0);
+                    countdownTimer = TickTimer.CreateFromSeconds(Runner, 1f);
+                }
+                else
+                {
+                    RPC_HideCountdown();
+                    isCountingDown = false;
+                    gameStarted = true;
+                    RPC_EnablePlayerControls();
+                    StartNewTurn();
+                }
+            }
+            return;
+        }
+
+        if (!gameStarted)
+            return;
+
+        if (turnExecutor != null && turnExecutor.GetCurrentState() == TurnState.Completed)
+        {
+            OnTurnExecutionComplete();
+            return;
+        }
+
+        if (turnTimer.Expired(Runner) && (turnExecutor == null || turnExecutor.GetCurrentState() == TurnState.WaitingChoices))
         {
             if (!beaterChoice.hasChosen || !goalKeeperChoice.hasChosen)
             {
                 AssignRandomChoices();
             }
+            
             ProcessTurn();
         }
     }
@@ -245,6 +362,14 @@ public class GameController : NetworkBehaviour
         if (!Object.HasStateAuthority)
             return;
 
+        if (turnExecutor != null)
+        {
+            turnExecutor.ExecuteTurn(
+                beaterChoice.horizontalPos, beaterChoice.verticalPos, beaterChoice.precision,
+                goalKeeperChoice.horizontalPos, goalKeeperChoice.verticalPos
+            );
+        }
+
         bool isMiss = beaterChoice.precision == PrecisionZone.Miss;
         bool isSaved = isMiss ? false : CheckSave(beaterChoice, goalKeeperChoice);
         bool isGoal = !isMiss && !isSaved;
@@ -284,6 +409,12 @@ public class GameController : NetworkBehaviour
 
         RPC_ShowTurnResult(beaterChoice.horizontalPos, beaterChoice.verticalPos, beaterChoice.precision, 
                           goalKeeperChoice.horizontalPos, goalKeeperChoice.verticalPos, isGoal, isSaved, isMiss);
+    }
+
+    public void OnTurnExecutionComplete()
+    {
+        if (!Object.HasStateAuthority)
+            return;
 
         currentTurn++;
 

@@ -206,8 +206,11 @@ GameObject:
   - component: {fileID: 9177031699894058236}
   - component: {fileID: 5786601159232370981}
   - component: {fileID: 6545208056902440671}
+  - component: {fileID: 8386343913093136315}
+  - component: {fileID: 7956576597364443462}
   - component: {fileID: 1388679577540286508}
   - component: {fileID: -4781003469380294610}
+  - component: {fileID: 3724982992384227714}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -246,8 +249,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _Role: 0
+  _playerName: 
   playerNameText: {fileID: 3089342333897834963}
   pinObject: {fileID: 4177416114840577330}
+  characterAnimator: {fileID: 8386343913093136315}
 --- !u!114 &6545208056902440671
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -260,6 +265,44 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 43f335e8752a0d84db79ed47d7d3b7d3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &8386343913093136315
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4581600197986504213}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b5337e96fa6d96d4188e8a76da604a44, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  animator: {fileID: 7956576597364443462}
+  kickTrigger: Kick
+  diveTrigger: Dive
+  diveDirectionParam: DiveDirection
+--- !u!95 &7956576597364443462
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4581600197986504213}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 6caf812c1be941b428697cf8a167fc58, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!114 &1388679577540286508
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -279,7 +322,9 @@ MonoBehaviour:
   NetworkedBehaviours:
   - {fileID: 5786601159232370981}
   - {fileID: 6545208056902440671}
+  - {fileID: 8386343913093136315}
   - {fileID: -4781003469380294610}
+  - {fileID: 3724982992384227714}
   ForceRemoteRenderTimeframe: 0
 --- !u!114 &-4781003469380294610
 MonoBehaviour:
@@ -298,6 +343,24 @@ MonoBehaviour:
   SyncParent: 0
   _autoAOIOverride: 1
   DisableSharedModeInterpolation: 0
+--- !u!114 &3724982992384227714
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4581600197986504213}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 506319458, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  Animator: {fileID: 7956576597364443462}
+  ApplyTiming: 2
+  SyncSettings: 79
+  StateHashes: 000000002b1a167c794069553b70e7be692a98973787db8adc445377f986e4f2da36e754c3549957de535e1054365518f172b2a7157b1fc3d709de6152c91c7c8c625d1f
+  TriggerHashes: 000000003b70e7be7eab8936
+  TotalWords: 2
 --- !u!1 &4942869459815914767
 GameObject:
   m_ObjectHideFlags: 0
