@@ -16,20 +16,26 @@ public class TurnExecutor : NetworkBehaviour
     [Header("References")]
     [SerializeField] private Ball ball;
     [SerializeField] private ShotTargetManager targetManager;
+    [SerializeField] private GameController gameController;
 
     [Header("Timing")]
     [SerializeField] private float kickDelay = 0.5f;
-    [SerializeField][Range(0f, 1f)] private float diveProgressThreshold = 0.4f;
+    [SerializeField][Range(0f, 1f)] private float catchProgressThreshold = 0.7f;
     [SerializeField] private float resultDelay = 2f;
 
     [Networked] private TurnState currentState { get; set; }
     [Networked] private TickTimer stateTimer { get; set; }
+    [Networked] private NetworkString<_64> beaterName { get; set; }
+    [Networked] private NetworkString<_64> goalkeeperName { get; set; }
+    [Networked] private NetworkBool isGoal { get; set; }
+    [Networked] private NetworkBool ballCaught { get; set; }
 
     private ShotHorizontalPos shotHorizontal;
     private ShotVerticalPos shotVertical;
     private PrecisionZone shotPrecision;
     private ShotHorizontalPos diveHorizontal;
     private ShotVerticalPos diveVertical;
+    private bool resultMessageShown = false;
 
     public TurnState GetCurrentState()
     {
@@ -37,7 +43,8 @@ public class TurnExecutor : NetworkBehaviour
     }
 
     public void ExecuteTurn(ShotHorizontalPos shotH, ShotVerticalPos shotV, PrecisionZone precision,
-                           ShotHorizontalPos diveH, ShotVerticalPos diveV)
+                           ShotHorizontalPos diveH, ShotVerticalPos diveV,
+                           string beaterPlayerName, string goalkeeperPlayerName, bool goalScored)
     {
         if (!Object.HasStateAuthority)
             return;
@@ -47,11 +54,22 @@ public class TurnExecutor : NetworkBehaviour
         shotPrecision = precision;
         diveHorizontal = diveH;
         diveVertical = diveV;
+        beaterName = beaterPlayerName;
+        goalkeeperName = goalkeeperPlayerName;
+        isGoal = goalScored;
+        resultMessageShown = false;
+        ballCaught = false;
+
+        Debug.Log($"<color=yellow>[TURN EXECUTOR] ExecuteTurn called - IsGoal: {goalScored}, CatchThreshold: {catchProgressThreshold}</color>");
+
+        if (gameController == null)
+            gameController = FindFirstObjectByType<GameController>();
 
         currentState = TurnState.ExecutingKick;
         stateTimer = TickTimer.CreateFromSeconds(Runner, kickDelay);
 
         RPC_NotifyKickStart();
+        PlayGoalkeeperAnimation();
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -79,23 +97,50 @@ public class TurnExecutor : NetworkBehaviour
             case TurnState.ExecutingKick:
                 if (stateTimer.Expired(Runner))
                 {
+                    Debug.Log("<color=yellow>[STATE] Transitioning to ExecutingDive</color>");
                     ShootBall();
                     currentState = TurnState.ExecutingDive;
                 }
                 break;
 
             case TurnState.ExecutingDive:
-                if (ball != null && ball.GetTravelProgress() >= diveProgressThreshold)
+                if (ball != null)
                 {
-                    PlayGoalkeeperAnimation();
-                    currentState = TurnState.ShowingResult;
-                    stateTimer = TickTimer.CreateFromSeconds(Runner, resultDelay);
+                    float progress = ball.GetTravelProgress();
+                    
+                    if (progress >= catchProgressThreshold && !ballCaught && !isGoal)
+                    {
+                        Debug.Log($"<color=cyan>[ATTACH] Progress: {progress:F2}, Threshold: {catchProgressThreshold}, BallCaught: {ballCaught}, IsGoal: {isGoal}</color>");
+                        ballCaught = true;
+                        AttachBallToGoalkeeper();
+                    }
+
+                    if (progress >= 1f && !resultMessageShown)
+                    {
+                        resultMessageShown = true;
+                        if (gameController != null)
+                        {
+                            gameController.ShowTurnResultMessage(beaterName.ToString(), goalkeeperName.ToString(), isGoal);
+                        }
+                        currentState = TurnState.ShowingResult;
+                        stateTimer = TickTimer.CreateFromSeconds(Runner, resultDelay);
+                    }
                 }
                 break;
 
             case TurnState.ShowingResult:
+                if (ball != null && ball.GetTravelProgress() >= 1f && !resultMessageShown)
+                {
+                    resultMessageShown = true;
+                    if (gameController != null)
+                    {
+                        gameController.ShowTurnResultMessage(beaterName.ToString(), goalkeeperName.ToString(), isGoal);
+                    }
+                }
+
                 if (stateTimer.Expired(Runner))
                 {
+                    Debug.Log("<color=red>[STATE] ShowingResult timer expired, calling ResetTurn()</color>");
                     ResetTurn();
                     currentState = TurnState.Completed;
                 }
@@ -156,6 +201,27 @@ public class TurnExecutor : NetworkBehaviour
         }
     }
 
+    private void AttachBallToGoalkeeper()
+    {
+        Debug.Log("<color=green>[ATTACH] AttachBallToGoalkeeper called!</color>");
+        
+        if (!Object.HasStateAuthority)
+        {
+            Debug.LogWarning("[ATTACH] No state authority, returning");
+            return;
+        }
+
+        if (ball != null)
+        {
+            Debug.Log("<color=green>[ATTACH] Calling ball.AttachToGoalkeeper()</color>");
+            ball.AttachToGoalkeeper();
+        }
+        else
+        {
+            Debug.LogError("[ATTACH] Ball is NULL!");
+        }
+    }
+
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
     private void RPC_PlayGoalkeeperDive(int direction)
     {
@@ -173,8 +239,17 @@ public class TurnExecutor : NetworkBehaviour
 
     private void ResetTurn()
     {
+        Debug.Log("<color=red>[TURN EXECUTOR] ResetTurn called!</color>");
+        
         if (ball != null)
+        {
+            Debug.Log("<color=red>[TURN EXECUTOR] Calling ball.ResetBall()</color>");
             ball.ResetBall();
+        }
+        else
+        {
+            Debug.LogError("[TURN EXECUTOR] Ball is NULL in ResetTurn!");
+        }
 
         RPC_ResetCharacters();
     }
@@ -197,5 +272,7 @@ public class TurnExecutor : NetworkBehaviour
             return;
             
         currentState = TurnState.WaitingChoices;
+        resultMessageShown = false;
+        ballCaught = false;
     }
 }

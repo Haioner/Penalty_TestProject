@@ -17,6 +17,7 @@ public class GameController : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI roundText;
     [SerializeField] private TextMeshProUGUI waitingText;
     [SerializeField] private TextMeshProUGUI countdownText;
+    [SerializeField] private TextMeshProUGUI resultText;
 
     [Header("Turn Execution")]
     [SerializeField] private float TURN_TIME = 10f;
@@ -24,8 +25,10 @@ public class GameController : NetworkBehaviour
 
     [Networked] private TickTimer turnTimer { get; set; }
     [Networked] private TickTimer countdownTimer { get; set; }
+    [Networked] private TickTimer roleSwapDelayTimer { get; set; }
     [Networked] private int countdownValue { get; set; }
     [Networked] private NetworkBool isCountingDown { get; set; }
+    [Networked] private NetworkBool isWaitingRoleSwap { get; set; }
     [Networked] private int currentTurn { get; set; }
     [Networked] private int player1Score { get; set; }
     [Networked] private int player2Score { get; set; }
@@ -62,6 +65,16 @@ public class GameController : NetworkBehaviour
         return Vector3.zero;
     }
 
+    public Quaternion GetRotationForRole(PlayerRole role)
+    {
+        if (role == PlayerRole.Beater && beaterPosition != null)
+            return beaterPosition.rotation;
+        else if (role == PlayerRole.GoalKeeper && goalKeeperPosition != null)
+            return goalKeeperPosition.rotation;
+
+        return Quaternion.identity;
+    }
+
     public override void Spawned()
     {
         if (Object.HasStateAuthority)
@@ -72,11 +85,15 @@ public class GameController : NetworkBehaviour
             gameStarted = false;
             suddenDeath = false;
             isCountingDown = false;
+            isWaitingRoleSwap = false;
             countdownValue = 3;
         }
 
         if (countdownText != null)
             countdownText.gameObject.SetActive(false);
+
+        if (resultText != null)
+            resultText.gameObject.SetActive(false);
     }
 
     public void StartGame()
@@ -158,6 +175,18 @@ public class GameController : NetworkBehaviour
             }
         }
         return PlayerRef.None;
+    }
+
+    public PlayerController GetCurrentGoalkeeper()
+    {
+        foreach (var playerData in players)
+        {
+            if (playerData.playerController != null && playerData.playerController.Role == PlayerRole.GoalKeeper)
+            {
+                return playerData.playerController;
+            }
+        }
+        return null;
     }
 
     public void SubmitBeaterChoice(PlayerRef player, ShotHorizontalPos horizontalPos, ShotVerticalPos verticalPos, PrecisionZone precision)
@@ -306,6 +335,17 @@ public class GameController : NetworkBehaviour
             return;
         }
 
+        if (isWaitingRoleSwap)
+        {
+            if (roleSwapDelayTimer.Expired(Runner))
+            {
+                isWaitingRoleSwap = false;
+                RPC_EnablePlayerControlsAfterSwap();
+                StartNewTurn();
+            }
+            return;
+        }
+
         if (!gameStarted)
             return;
 
@@ -362,23 +402,26 @@ public class GameController : NetworkBehaviour
         if (!Object.HasStateAuthority)
             return;
 
-        if (turnExecutor != null)
-        {
-            turnExecutor.ExecuteTurn(
-                beaterChoice.horizontalPos, beaterChoice.verticalPos, beaterChoice.precision,
-                goalKeeperChoice.horizontalPos, goalKeeperChoice.verticalPos
-            );
-        }
+        PlayerRef beaterPlayer = GetCurrentBeaterPlayer();
+        PlayerRef goalkeeperPlayer = GetCurrentGoalKeeperPlayer();
+        string beaterName = GetPlayerNameByRef(beaterPlayer);
+        string goalkeeperName = GetPlayerNameByRef(goalkeeperPlayer);
 
         bool isMiss = beaterChoice.precision == PrecisionZone.Miss;
         bool isSaved = isMiss ? false : CheckSave(beaterChoice, goalKeeperChoice);
         bool isGoal = !isMiss && !isSaved;
 
-        PlayerRef beaterPlayer = GetCurrentBeaterPlayer();
-        PlayerRef goalkeeperPlayer = GetCurrentGoalKeeperPlayer();
+        if (turnExecutor != null)
+        {
+            turnExecutor.ExecuteTurn(
+                beaterChoice.horizontalPos, beaterChoice.verticalPos, beaterChoice.precision,
+                goalKeeperChoice.horizontalPos, goalKeeperChoice.verticalPos,
+                beaterName, goalkeeperName, isGoal
+            );
+        }
 
         Debug.Log($"[ProcessTurn] === ROUND {currentTurn + 1} ===");
-        Debug.Log($"[ProcessTurn] Beater: {GetPlayerNameByRef(beaterPlayer)} ({beaterPlayer}) | Goalkeeper: {GetPlayerNameByRef(goalkeeperPlayer)} ({goalkeeperPlayer})");
+        Debug.Log($"[ProcessTurn] Beater: {beaterName} ({beaterPlayer}) | Goalkeeper: {goalkeeperName} ({goalkeeperPlayer})");
         Debug.Log($"[ProcessTurn] Shot: {beaterChoice.horizontalPos}/{beaterChoice.verticalPos} (Precision: {beaterChoice.precision})");
         Debug.Log($"[ProcessTurn] Dive: {goalKeeperChoice.horizontalPos}/{goalKeeperChoice.verticalPos}");
         Debug.Log($"[ProcessTurn] Result - Miss: {isMiss}, Saved: {isSaved}, GOAL: {isGoal}");
@@ -393,12 +436,12 @@ public class GameController : NetworkBehaviour
             if (beaterPlayerIndex == 0)
             {
                 player1Score++;
-                Debug.Log($"<color=green>[⚽ GOAL!] {GetPlayerNameByRef(beaterPlayer)} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
+                Debug.Log($"<color=green>[⚽ GOAL!] {beaterName} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
             }
             else
             {
                 player2Score++;
-                Debug.Log($"<color=green>[⚽ GOAL!] {GetPlayerNameByRef(beaterPlayer)} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
+                Debug.Log($"<color=green>[⚽ GOAL!] {beaterName} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
             }
         }
         else
@@ -416,6 +459,8 @@ public class GameController : NetworkBehaviour
         if (!Object.HasStateAuthority)
             return;
 
+        RPC_HideResultMessage();
+
         currentTurn++;
 
         if (currentTurn >= (ROUNDS_PER_SIDE * 2))
@@ -428,13 +473,14 @@ public class GameController : NetworkBehaviour
             {
                 Debug.Log($"<color=cyan>[🔄 SWAP] After {ROUNDS_PER_SIDE} rounds, players are swapping roles!</color>");
                 RPC_SwapRoles();
+                isWaitingRoleSwap = true;
+                roleSwapDelayTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
             }
             else
             {
                 RPC_RestartTurnForPlayers();
+                StartNewTurn();
             }
-            
-            StartNewTurn();
         }
     }
 
@@ -460,6 +506,37 @@ public class GameController : NetworkBehaviour
                                     ShotHorizontalPos diveH, ShotVerticalPos diveV, bool isGoal, bool isSaved, bool isMiss)
     {
         Debug.Log($"Turn {currentTurn} - Shot: {shotH}/{shotV} ({precision}), Dive: {diveH}/{diveV}, Goal: {isGoal}, Saved: {isSaved}, Miss: {isMiss}");
+    }
+
+    public void ShowTurnResultMessage(string beaterName, string goalkeeperName, bool isGoal)
+    {
+        RPC_ShowResultMessage(beaterName, goalkeeperName, isGoal);
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_ShowResultMessage(string beaterName, string goalkeeperName, bool isGoal)
+    {
+        if (resultText != null)
+        {
+            resultText.gameObject.SetActive(true);
+            if (isGoal)
+            {
+                resultText.text = $"{beaterName} GOAL !!!";
+            }
+            else
+            {
+                resultText.text = $"{goalkeeperName} Defended !!!";
+            }
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_HideResultMessage()
+    {
+        if (resultText != null)
+        {
+            resultText.gameObject.SetActive(false);
+        }
     }
 
     private void CheckGameEnd()
@@ -512,6 +589,20 @@ public class GameController : NetworkBehaviour
             else if (player.Role == PlayerRole.GoalKeeper)
             {
                 player.SetRole(PlayerRole.Beater);
+            }
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_EnablePlayerControlsAfterSwap()
+    {
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (PlayerController player in allPlayers)
+        {
+            RoleController roleController = player.GetComponent<RoleController>();
+            if (roleController != null)
+            {
+                roleController.EnableRoleControlsAfterCountdown();
             }
         }
     }

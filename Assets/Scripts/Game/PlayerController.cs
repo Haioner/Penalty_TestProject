@@ -14,10 +14,16 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private TextMeshPro playerNameText;
     [SerializeField] private GameObject pinObject;
     [SerializeField] private CharacterAnimator characterAnimator;
+    [SerializeField] private Transform handPivot;
 
     private GameController gameController;
     private RoleController roleController;
     private bool isLocalPlayer = false;
+
+    public Transform GetHandPivot()
+    {
+        return handPivot;
+    }
 
     public override void Spawned()
     {
@@ -58,6 +64,7 @@ public class PlayerController : NetworkBehaviour
     {
         UpdateControllers(newRole);
         MoveToPosition(newRole);
+        UpdateCharacterModel(newRole);
     }
 
     private void UpdateControllers(PlayerRole role)
@@ -68,12 +75,23 @@ public class PlayerController : NetworkBehaviour
         }
     }
 
+    private void UpdateCharacterModel(PlayerRole role)
+    {
+        if (characterAnimator != null)
+        {
+            characterAnimator.SetCharacterForRole(role);
+        }
+    }
+
     private void MoveToPosition(PlayerRole role)
     {
         if (gameController == null)
             return;
 
         Vector3 targetPosition = gameController.GetPositionForRole(role);
+        Quaternion targetRotation = gameController.GetRotationForRole(role);
+        
         transform.position = targetPosition;
+        transform.rotation = targetRotation;
     }
 }

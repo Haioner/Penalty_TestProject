@@ -1,5 +1,6 @@
 using UnityEngine;
 using Fusion;
+using System.Collections.Generic;
 
 public class CharacterAnimator : NetworkBehaviour
 {
@@ -8,6 +9,14 @@ public class CharacterAnimator : NetworkBehaviour
     [SerializeField] private string kickTrigger = "Kick";
     [SerializeField] private string diveTrigger = "Dive";
     [SerializeField] private string diveDirectionParam = "DiveDirection";
+
+    [Header("Beater Character")]
+    [SerializeField] private Avatar beaterAvatar;
+    [SerializeField] private List<GameObject> beaterModels;
+
+    [Header("GoalKeeper Character")]
+    [SerializeField] private Avatar goalKeeperAvatar;
+    [SerializeField] private List<GameObject> goalKeeperModels;
 
     [Networked] private NetworkBool isAnimating { get; set; }
 
@@ -62,5 +71,90 @@ public class CharacterAnimator : NetworkBehaviour
     public bool IsAnimating()
     {
         return isAnimating;
+    }
+
+    public void SetCharacterForRole(PlayerRole role)
+    {
+        if (!Object.HasStateAuthority)
+            return;
+
+        RPC_UpdateCharacterModel(role);
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_UpdateCharacterModel(PlayerRole role)
+    {
+        if (role == PlayerRole.Beater)
+        {
+            ActivateBeaterModel();
+        }
+        else if (role == PlayerRole.GoalKeeper)
+        {
+            ActivateGoalKeeperModel();
+        }
+    }
+
+    private void ActivateBeaterModel()
+    {
+        if (animator != null && beaterAvatar != null)
+        {
+            animator.avatar = beaterAvatar;
+        }
+
+        if (beaterModels != null)
+        {
+            foreach (GameObject model in beaterModels)
+            {
+                if (model != null)
+                    model.SetActive(true);
+            }
+        }
+
+        if (goalKeeperModels != null)
+        {
+            foreach (GameObject model in goalKeeperModels)
+            {
+                if (model != null)
+                    model.SetActive(false);
+            }
+        }
+
+        if (animator != null)
+        {
+            animator.Rebind();
+            animator.Update(0f);
+        }
+    }
+
+    private void ActivateGoalKeeperModel()
+    {
+        if (animator != null && goalKeeperAvatar != null)
+        {
+            animator.avatar = goalKeeperAvatar;
+        }
+
+        if (goalKeeperModels != null)
+        {
+            foreach (GameObject model in goalKeeperModels)
+            {
+                if (model != null)
+                    model.SetActive(true);
+            }
+        }
+
+        if (beaterModels != null)
+        {
+            foreach (GameObject model in beaterModels)
+            {
+                if (model != null)
+                    model.SetActive(false);
+            }
+        }
+
+        if (animator != null)
+        {
+            animator.Rebind();
+            animator.Update(0f);
+        }
     }
 }
