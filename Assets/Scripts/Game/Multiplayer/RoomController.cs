@@ -26,7 +26,17 @@ public class RoomController : NetworkBehaviour, IPlayerJoined, IPlayerLeft
 
     public void PlayerLeft(PlayerRef player)
     {
-        CheckPlayerCount();
+        Debug.Log($"<color=red>[PLAYER LEFT] Player {player} disconnected from the match!</color>");
+        
+        if (allPlayersReady)
+        {
+            Debug.Log("<color=orange>[PLAYER LEFT] Game was in progress, shutting down for all players...</color>");
+            RPC_PlayerDisconnectedDuringMatch();
+        }
+        else
+        {
+            CheckPlayerCount();
+        }
     }
 
     private void CheckPlayerCount()
@@ -78,5 +88,12 @@ public class RoomController : NetworkBehaviour, IPlayerJoined, IPlayerLeft
         {
             gameController.StartGame();
         }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_PlayerDisconnectedDuringMatch()
+    {
+        Debug.Log("<color=red>[RPC] Player disconnected, returning to lobby...</color>");
+        NetworkManager.ShutDown();
     }
 }

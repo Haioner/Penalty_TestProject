@@ -175,6 +175,11 @@ public class TurnExecutor : NetworkBehaviour
 
         if (shotPrecision == PrecisionZone.Medium)
         {
+            if (shotHorizontal == ShotHorizontalPos.Middle)
+            {
+                return targetManager.GetTargetPosition(shotHorizontal, shotVertical);
+            }
+            
             Vector3 topPos = targetManager.GetTargetPosition(shotHorizontal, ShotVerticalPos.Top);
             Vector3 bottomPos = targetManager.GetTargetPosition(shotHorizontal, ShotVerticalPos.Bottom);
             return Vector3.Lerp(topPos, bottomPos, 0.5f);

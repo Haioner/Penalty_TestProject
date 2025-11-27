@@ -15,6 +15,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     public static NetworkRunner runnerInstance;
     public string RegionToken;
     public string PlayerName;
+    public float coins;
     public static bool ReconnectToRegion;
 
     //public GameObject playerPrefab;
@@ -32,6 +33,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         GetRunnerInstance();
         LoadRegionToken();
         LoadName();
+        LoadCoins();
     }
 
     private void InstanceNetworkManager()
@@ -48,6 +50,17 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         }
     }
 
+    public void AddCoins(float amount)
+    {
+        coins += amount;
+        PlayerPrefs.SetFloat("coins", coins);
+    }
+
+    private void LoadCoins()
+    {
+        if (PlayerPrefs.HasKey("coins"))
+            coins = PlayerPrefs.GetFloat("coins");
+    }
     private void GetRunnerInstance()
     {
         runnerInstance = gameObject.GetComponent<NetworkRunner>();

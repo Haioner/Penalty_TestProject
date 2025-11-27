@@ -18,6 +18,13 @@ public class GameController : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI waitingText;
     [SerializeField] private TextMeshProUGUI countdownText;
     [SerializeField] private TextMeshProUGUI resultText;
+    [SerializeField] private GameObject finalResultScreen;
+    [SerializeField] private TextMeshProUGUI finalResultText;
+    [SerializeField] private TextMeshProUGUI finalScoreText;
+    [SerializeField] private TextMeshProUGUI coinsEarnedText;
+    [SerializeField] private TextMeshProUGUI rematchWaitingText;
+    [SerializeField] private UnityEngine.UI.Button playAgainButton;
+    [SerializeField] private UnityEngine.UI.Button leaveRoomButton;
 
     [Header("Turn Execution")]
     [SerializeField] private float TURN_TIME = 10f;
@@ -34,6 +41,8 @@ public class GameController : NetworkBehaviour
     [Networked] private int player2Score { get; set; }
     [Networked] private NetworkBool gameStarted { get; set; }
     [Networked] private NetworkBool suddenDeath { get; set; }
+    [Networked] private NetworkBool player1WantsRematch { get; set; }
+    [Networked] private NetworkBool player2WantsRematch { get; set; }
 
     private struct PlayerChoice : INetworkStruct
     {
@@ -54,6 +63,131 @@ public class GameController : NetworkBehaviour
     }
 
     private List<PlayerData> players = new List<PlayerData>();
+
+    public void LeaveRoom() 
+    {
+        Debug.Log("<color=orange>[🚪 LEAVE ROOM] Player leaving the match...</color>");
+        NetworkManager.ShutDown();
+    }
+
+    public void RestartMatch()
+    {
+        RPC_RequestRematch(Runner.LocalPlayer);
+
+        if (playAgainButton != null)
+        {
+            playAgainButton.interactable = false;
+        }
+
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    private void RPC_RequestRematch(PlayerRef playerRef)
+    {
+        int playerIndex = players.FindIndex(p => p.playerRef == playerRef);
+        string playerName = GetPlayerNameByRef(playerRef);
+        
+        Debug.Log($"<color=cyan>[🔄 REMATCH REQUEST] {playerName} (Player {playerIndex + 1}) wants to play again!</color>");
+        
+        if (playerIndex == 0)
+        {
+            player1WantsRematch = true;
+        }
+        else if (playerIndex == 1)
+        {
+            player2WantsRematch = true;
+        }
+        
+        RPC_UpdateRematchUI(playerRef, playerName);
+        
+        if (player1WantsRematch && player2WantsRematch)
+        {
+            Debug.Log("<color=green>[🔄 REMATCH] Both players ready! Starting new match...</color>");
+            ExecuteRematch();
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_UpdateRematchUI(PlayerRef requestingPlayer, NetworkString<_64> playerName)
+    {
+
+        if (Runner.LocalPlayer != requestingPlayer)
+        {
+            if (rematchWaitingText != null)
+            {
+                rematchWaitingText.gameObject.SetActive(true);
+                rematchWaitingText.text = $"{playerName} wants to play again";
+            }
+        }
+    }
+
+    private void ExecuteRematch()
+    {
+        Debug.Log("<color=cyan>[🔄 REMATCH] Executing rematch - resetting game state...</color>");
+        
+        currentTurn = 0;
+        player1Score = 0;
+        player2Score = 0;
+        suddenDeath = false;
+        isCountingDown = false;
+        isWaitingRoleSwap = false;
+        gameStarted = false;
+        player1WantsRematch = false;
+        player2WantsRematch = false;
+        
+        beaterChoice = new PlayerChoice 
+        { 
+            horizontalPos = ShotHorizontalPos.Middle, 
+            verticalPos = ShotVerticalPos.Middle, 
+            precision = PrecisionZone.Medium, 
+            hasChosen = false 
+        };
+        goalKeeperChoice = new PlayerChoice 
+        { 
+            horizontalPos = ShotHorizontalPos.Middle, 
+            verticalPos = ShotVerticalPos.Middle, 
+            precision = PrecisionZone.Medium, 
+            hasChosen = false 
+        };
+        
+        if (turnExecutor != null)
+        {
+            turnExecutor.ResetForNewTurn();
+            Debug.Log("<color=cyan>[🔄 REMATCH] TurnExecutor reset complete</color>");
+        }
+        
+        RPC_HideFinalResultScreen();
+        
+        Debug.Log($"<color=cyan>[🔄 REMATCH] Swapping player roles... Players registered: {players.Count}</color>");
+        RPC_SwapRoles();
+        
+        Debug.Log("<color=cyan>[🔄 REMATCH] Calling StartGame...</color>");
+        StartGame();
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_HideFinalResultScreen()
+    {
+        if (finalResultScreen != null)
+        {
+            finalResultScreen.SetActive(false);
+        }
+        
+        if (rematchWaitingText != null)
+        {
+            rematchWaitingText.gameObject.SetActive(false);
+        }
+        
+        if (playAgainButton != null)
+        {
+            playAgainButton.interactable = true;
+        }
+        
+        if (leaveRoomButton != null)
+        {
+            leaveRoomButton.interactable = true;
+        }
+    }
 
     public Vector3 GetPositionForRole(PlayerRole role)
     {
@@ -87,6 +221,8 @@ public class GameController : NetworkBehaviour
             isCountingDown = false;
             isWaitingRoleSwap = false;
             countdownValue = 3;
+            player1WantsRematch = false;
+            player2WantsRematch = false;
         }
 
         if (countdownText != null)
@@ -94,13 +230,25 @@ public class GameController : NetworkBehaviour
 
         if (resultText != null)
             resultText.gameObject.SetActive(false);
+
+        if (finalResultScreen != null)
+            finalResultScreen.SetActive(false);
+        
+        if (rematchWaitingText != null)
+            rematchWaitingText.gameObject.SetActive(false);
     }
 
     public void StartGame()
     {
+        Debug.Log($"<color=yellow>[🎮 START GAME] Called - HasStateAuthority: {Object.HasStateAuthority}, Runner: {Runner != null}</color>");
+        
         if (!Object.HasStateAuthority)
+        {
+            Debug.Log("<color=orange>[🎮 START GAME] Skipped - Not StateAuthority</color>");
             return;
+        }
 
+        Debug.Log("<color=green>[🎮 START GAME] Starting countdown...</color>");
         isCountingDown = true;
         countdownValue = 3;
         countdownTimer = TickTimer.CreateFromSeconds(Runner, 1f);
@@ -132,6 +280,8 @@ public class GameController : NetworkBehaviour
         if (!Object.HasStateAuthority)
             return;
 
+        Debug.Log($"<color=cyan>[🎯 NEW TURN] Starting turn {currentTurn + 1}</color>");
+
         beaterChoice = new PlayerChoice 
         { 
             horizontalPos = ShotHorizontalPos.Middle, 
@@ -151,6 +301,8 @@ public class GameController : NetworkBehaviour
             turnExecutor.ResetForNewTurn();
 
         turnTimer = TickTimer.CreateFromSeconds(Runner, TURN_TIME);
+        
+        Debug.Log($"<color=cyan>[🎯 NEW TURN] Turn timer started for {TURN_TIME} seconds</color>");
     }
 
     private PlayerRef GetCurrentBeaterPlayer()
@@ -213,7 +365,7 @@ public class GameController : NetworkBehaviour
             hasChosen = true
         };
 
-        CheckBothPlayersChosen();
+        CheckBothPlayersChosen(player);
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
@@ -230,10 +382,10 @@ public class GameController : NetworkBehaviour
             hasChosen = true
         };
 
-        CheckBothPlayersChosen();
+        CheckBothPlayersChosen(player);
     }
 
-    private void CheckBothPlayersChosen()
+    private void CheckBothPlayersChosen(PlayerRef playerWhoChose)
     {
         if (beaterChoice.hasChosen && goalKeeperChoice.hasChosen)
         {
@@ -242,23 +394,28 @@ public class GameController : NetworkBehaviour
         }
         else
         {
-            RPC_UpdateWaitingText();
+            RPC_ShowWaitingTextForPlayer(playerWhoChose);
         }
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
-    private void RPC_UpdateWaitingText()
+    private void RPC_ShowWaitingTextForPlayer(PlayerRef playerWhoChose)
     {
-        if (waitingText != null)
+        if (Runner.LocalPlayer == playerWhoChose)
         {
-            waitingText.gameObject.SetActive(true);
-            waitingText.text = "Waiting other player...";
+            if (waitingText != null)
+            {
+                waitingText.gameObject.SetActive(true);
+                waitingText.text = "Waiting other player...";
+            }
         }
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
     private void RPC_ShowCountdown(int value)
     {
+        Debug.Log($"<color=yellow>[RPC COUNTDOWN] Showing countdown: {value}</color>");
+        
         if (countdownText != null)
         {
             countdownText.gameObject.SetActive(true);
@@ -267,6 +424,12 @@ public class GameController : NetworkBehaviour
                 countdownText.text = value.ToString();
             else
                 countdownText.text = "GO!";
+                
+            Debug.Log($"<color=yellow>[RPC COUNTDOWN] Text set to: {countdownText.text}</color>");
+        }
+        else
+        {
+            Debug.LogWarning("<color=red>[RPC COUNTDOWN] countdownText is NULL!</color>");
         }
     }
 
@@ -312,6 +475,7 @@ public class GameController : NetworkBehaviour
             if (countdownTimer.Expired(Runner))
             {
                 countdownValue--;
+                Debug.Log($"<color=yellow>[⏱️ COUNTDOWN] Tick - countdownValue: {countdownValue}</color>");
 
                 if (countdownValue > 0)
                 {
@@ -325,6 +489,7 @@ public class GameController : NetworkBehaviour
                 }
                 else
                 {
+                    Debug.Log("<color=green>[⏱️ COUNTDOWN] Countdown finished! Starting game...</color>");
                     RPC_HideCountdown();
                     isCountingDown = false;
                     gameStarted = true;
@@ -463,7 +628,21 @@ public class GameController : NetworkBehaviour
 
         currentTurn++;
 
-        if (currentTurn >= (ROUNDS_PER_SIDE * 2))
+        if (suddenDeath)
+        {
+            if (player1Score != player2Score)
+            {
+                RPC_EndGame(player1Score > player2Score ? 1 : 2);
+            }
+            else
+            {
+                Debug.Log($"<color=cyan>[SUDDEN DEATH] Round {currentTurn - ROUNDS_PER_SIDE * 2 + 1} - No goal, swapping roles!</color>");
+                RPC_SwapRoles();
+                isWaitingRoleSwap = true;
+                roleSwapDelayTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
+            }
+        }
+        else if (currentTurn >= (ROUNDS_PER_SIDE * 2))
         {
             CheckGameEnd();
         }
@@ -543,8 +722,11 @@ public class GameController : NetworkBehaviour
     {
         if (player1Score == player2Score)
         {
+            Debug.Log("<color=magenta>[⚡ SUDDEN DEATH] Score tied! Starting sudden death mode!</color>");
             suddenDeath = true;
-            StartNewTurn();
+            RPC_SwapRoles();
+            isWaitingRoleSwap = true;
+            roleSwapDelayTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
         }
         else
         {
@@ -555,8 +737,62 @@ public class GameController : NetworkBehaviour
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
     private void RPC_EndGame(int winnerPlayerNumber)
     {
-        Debug.Log($"Game Over! Player {winnerPlayerNumber} wins with score {player1Score}-{player2Score}!");
+        Debug.Log($"<color=green>[🏆 GAME OVER] Player {winnerPlayerNumber} wins with score {player1Score}-{player2Score}!</color>");
         gameStarted = false;
+        
+        if (finalResultScreen != null)
+        {
+            finalResultScreen.SetActive(true);
+            
+            string player1Name = GetPlayerName(0);
+            string player2Name = GetPlayerName(1);
+            
+            int localPlayerIndex = -1;
+            for (int i = 0; i < players.Count; i++)
+            {
+                if (players[i].playerRef == Runner.LocalPlayer)
+                {
+                    localPlayerIndex = i;
+                    break;
+                }
+            }
+            
+            bool isLocalPlayerWinner = (localPlayerIndex + 1) == winnerPlayerNumber;
+            
+            Debug.Log($"[RPC_EndGame] LocalPlayer: {Runner.LocalPlayer}, LocalPlayerIndex: {localPlayerIndex}, WinnerPlayerNumber: {winnerPlayerNumber}, IsWinner: {isLocalPlayerWinner}");
+            
+            if (finalResultText != null)
+            {
+                finalResultText.text = isLocalPlayerWinner ? "VICTORY!" : "DEFEAT!";
+            }
+            
+            if (finalScoreText != null)
+            {
+                finalScoreText.text = $"{player1Name} {player1Score} x {player2Score} {player2Name}";
+            }
+            
+            int coinsEarned = 0;
+            if (NetworkManager.Instance != null)
+            {
+                if (isLocalPlayerWinner)
+                {
+                    coinsEarned = 10;
+                    NetworkManager.Instance.AddCoins(coinsEarned);
+                    Debug.Log("<color=yellow>[💰 COINS] Victory! +10 coins awarded!</color>");
+                }
+                else
+                {
+                    coinsEarned = 3;
+                    NetworkManager.Instance.AddCoins(coinsEarned);
+                    Debug.Log("<color=yellow>[💰 COINS] Defeat! +3 coins awarded!</color>");
+                }
+            }
+            
+            if (coinsEarnedText != null)
+            {
+                coinsEarnedText.text = $"+{coinsEarned} Coins";
+            }
+        }
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
@@ -579,16 +815,24 @@ public class GameController : NetworkBehaviour
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
     private void RPC_SwapRoles()
     {
+        Debug.Log("<color=magenta>[🔄 SWAP ROLES] Swapping player roles...</color>");
+        
         PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        Debug.Log($"<color=magenta>[🔄 SWAP ROLES] Found {allPlayers.Length} players to swap</color>");
+        
         foreach (PlayerController player in allPlayers)
         {
+            PlayerRole oldRole = player.Role;
+            
             if (player.Role == PlayerRole.Beater)
             {
                 player.SetRole(PlayerRole.GoalKeeper);
+                Debug.Log($"<color=magenta>[🔄 SWAP ROLES] Player swapped: {oldRole} → {player.Role}</color>");
             }
             else if (player.Role == PlayerRole.GoalKeeper)
             {
                 player.SetRole(PlayerRole.Beater);
+                Debug.Log($"<color=magenta>[🔄 SWAP ROLES] Player swapped: {oldRole} → {player.Role}</color>");
             }
         }
     }
@@ -609,18 +853,15 @@ public class GameController : NetworkBehaviour
 
     public override void Render()
     {
-        if (!gameStarted)
-            return;
-
         UpdateUI();
     }
 
     private void UpdateUI()
     {
-        if (timerText != null && turnTimer.RemainingTime(Runner).HasValue)
+        if (gameStarted && timerText != null && turnTimer.RemainingTime(Runner).HasValue)
         {
             float remainingTime = (float)turnTimer.RemainingTime(Runner).Value;
-            timerText.text = Mathf.CeilToInt(remainingTime).ToString();
+            timerText.text = Mathf.CeilToInt(remainingTime).ToString() + "s";
         }
 
         if (scoreText != null)

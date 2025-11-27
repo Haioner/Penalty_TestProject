@@ -19,6 +19,7 @@ public class LobbyController : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private Button quickButton;
     [SerializeField] private TMP_InputField playerText_Input;
     [SerializeField] private TextMeshProUGUI regionText;
+    [SerializeField] private TextMeshProUGUI CoinsText;
 
     private NetworkManager networkManager;
 
@@ -29,6 +30,8 @@ public class LobbyController : MonoBehaviour, INetworkRunnerCallbacks
             networkManager = NetworkManager.Instance;
             NetworkManager.runnerInstance.AddCallbacks(this);
             InitLobbyCanvas();
+
+            CoinsText.text = "Coins " + networkManager.coins.ToString("F0");
         }
     }
 
