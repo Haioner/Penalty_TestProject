@@ -7,6 +7,9 @@ public class GameController : NetworkBehaviour
 {
     private const int ROUNDS_PER_SIDE = 5;
 
+    [Header("Role Swap Settings")]
+    [SerializeField] private int turnsBeforeRoleSwap = 1;
+
     [Header("Player Positions")]
     [SerializeField] private Transform beaterPosition;
     [SerializeField] private Transform goalKeeperPosition;
@@ -43,6 +46,9 @@ public class GameController : NetworkBehaviour
     [Networked] private NetworkBool suddenDeath { get; set; }
     [Networked] private NetworkBool player1WantsRematch { get; set; }
     [Networked] private NetworkBool player2WantsRematch { get; set; }
+    [Networked] private int suddenDeathRoundStartTurn { get; set; }
+    [Networked] private int player1SuddenDeathScore { get; set; }
+    [Networked] private int player2SuddenDeathScore { get; set; }
 
     private struct PlayerChoice : INetworkStruct
     {
@@ -134,6 +140,9 @@ public class GameController : NetworkBehaviour
         gameStarted = false;
         player1WantsRematch = false;
         player2WantsRematch = false;
+        suddenDeathRoundStartTurn = 0;
+        player1SuddenDeathScore = 0;
+        player2SuddenDeathScore = 0;
         
         beaterChoice = new PlayerChoice 
         { 
@@ -223,6 +232,9 @@ public class GameController : NetworkBehaviour
             countdownValue = 3;
             player1WantsRematch = false;
             player2WantsRematch = false;
+            suddenDeathRoundStartTurn = 0;
+            player1SuddenDeathScore = 0;
+            player2SuddenDeathScore = 0;
         }
 
         if (countdownText != null)
@@ -630,16 +642,45 @@ public class GameController : NetworkBehaviour
 
         if (suddenDeath)
         {
-            if (player1Score != player2Score)
+            int turnsInCurrentRound = currentTurn - suddenDeathRoundStartTurn;
+            
+            Debug.Log($"<color=cyan>[SUDDEN DEATH] Turn {currentTurn}, Turns in round: {turnsInCurrentRound}</color>");
+            
+            if (turnsInCurrentRound < 2)
             {
-                RPC_EndGame(player1Score > player2Score ? 1 : 2);
-            }
-            else
-            {
-                Debug.Log($"<color=cyan>[SUDDEN DEATH] Round {currentTurn - ROUNDS_PER_SIDE * 2 + 1} - No goal, swapping roles!</color>");
+                Debug.Log("<color=cyan>[SUDDEN DEATH] First player shot, swapping roles for second player...</color>");
                 RPC_SwapRoles();
                 isWaitingRoleSwap = true;
                 roleSwapDelayTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
+            }
+            else
+            {
+                int player1RoundScore = player1Score - player1SuddenDeathScore;
+                int player2RoundScore = player2Score - player2SuddenDeathScore;
+                
+                Debug.Log($"<color=cyan>[SUDDEN DEATH] Round complete! P1: {player1RoundScore}, P2: {player2RoundScore}</color>");
+                
+                if (player1RoundScore > player2RoundScore)
+                {
+                    Debug.Log("<color=green>[SUDDEN DEATH] Player 1 scored and Player 2 missed - Player 1 wins!</color>");
+                    RPC_EndGame(1);
+                }
+                else if (player2RoundScore > player1RoundScore)
+                {
+                    Debug.Log("<color=green>[SUDDEN DEATH] Player 2 scored and Player 1 missed - Player 2 wins!</color>");
+                    RPC_EndGame(2);
+                }
+                else
+                {
+                    Debug.Log("<color=yellow>[SUDDEN DEATH] Both players had same result - continuing sudden death!</color>");
+                    player1SuddenDeathScore = player1Score;
+                    player2SuddenDeathScore = player2Score;
+                    suddenDeathRoundStartTurn = currentTurn;
+                    
+                    RPC_SwapRoles();
+                    isWaitingRoleSwap = true;
+                    roleSwapDelayTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
+                }
             }
         }
         else if (currentTurn >= (ROUNDS_PER_SIDE * 2))
@@ -648,9 +689,9 @@ public class GameController : NetworkBehaviour
         }
         else
         {
-            if (currentTurn == ROUNDS_PER_SIDE)
+            if (turnsBeforeRoleSwap > 0 && currentTurn % turnsBeforeRoleSwap == 0 && currentTurn < (ROUNDS_PER_SIDE * 2))
             {
-                Debug.Log($"<color=cyan>[🔄 SWAP] After {ROUNDS_PER_SIDE} rounds, players are swapping roles!</color>");
+                Debug.Log($"<color=cyan>[🔄 SWAP] After {turnsBeforeRoleSwap} turn(s), players are swapping roles! (Turn {currentTurn})</color>");
                 RPC_SwapRoles();
                 isWaitingRoleSwap = true;
                 roleSwapDelayTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);
@@ -724,6 +765,9 @@ public class GameController : NetworkBehaviour
         {
             Debug.Log("<color=magenta>[⚡ SUDDEN DEATH] Score tied! Starting sudden death mode!</color>");
             suddenDeath = true;
+            suddenDeathRoundStartTurn = currentTurn;
+            player1SuddenDeathScore = player1Score;
+            player2SuddenDeathScore = player2Score;
             RPC_SwapRoles();
             isWaitingRoleSwap = true;
             roleSwapDelayTimer = TickTimer.CreateFromSeconds(Runner, 0.5f);

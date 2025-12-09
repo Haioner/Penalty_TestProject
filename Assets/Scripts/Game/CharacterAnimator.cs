@@ -75,22 +75,35 @@ public class CharacterAnimator : NetworkBehaviour
 
     public void SetCharacterForRole(PlayerRole role)
     {
-        if (!Object.HasStateAuthority)
-            return;
-
-        RPC_UpdateCharacterModel(role);
+        if (Object.HasStateAuthority)
+        {
+            RPC_UpdateCharacterModel(role);
+        }
+        else
+        {
+            UpdateCharacterModelLocal(role);
+        }
     }
 
     [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
     private void RPC_UpdateCharacterModel(PlayerRole role)
     {
+        UpdateCharacterModelLocal(role);
+    }
+
+    private void UpdateCharacterModelLocal(PlayerRole role)
+    {
+        Debug.Log($"<color=magenta>[🎨 ANIMATOR] Updating character model for role: {role}</color>");
+        
         if (role == PlayerRole.Beater)
         {
             ActivateBeaterModel();
+            Debug.Log("<color=magenta>[🎨 ANIMATOR] Beater model activated</color>");
         }
         else if (role == PlayerRole.GoalKeeper)
         {
             ActivateGoalKeeperModel();
+            Debug.Log("<color=magenta>[🎨 ANIMATOR] GoalKeeper model activated</color>");
         }
     }
 

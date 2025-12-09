@@ -15,6 +15,8 @@ public class RoleController : NetworkBehaviour
 
     public void StartRole(PlayerRole newRole)
     {
+        UnityEngine.Debug.Log($"<color=cyan>[🎮 ROLE] StartRole called with: {newRole} (current: {currentRole})</color>");
+        
         currentRole = newRole;
 
         if (precisionBar == null)
@@ -24,6 +26,8 @@ public class RoleController : NetworkBehaviour
             targetManager = FindFirstObjectByType<ShotTargetManager>();
 
         waitingForGameStart = true;
+        
+        UnityEngine.Debug.Log($"<color=cyan>[🎮 ROLE] Role updated to: {currentRole}, waiting for game start</color>");
     }
 
     public void EnableRoleControlsAfterCountdown()
