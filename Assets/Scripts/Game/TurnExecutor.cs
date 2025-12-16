@@ -28,6 +28,7 @@ public class TurnExecutor : NetworkBehaviour
     [Networked] private NetworkString<_64> beaterName { get; set; }
     [Networked] private NetworkString<_64> goalkeeperName { get; set; }
     [Networked] private NetworkBool isGoal { get; set; }
+    [Networked] private NetworkBool isSaved { get; set; }
     [Networked] private NetworkBool ballCaught { get; set; }
 
     private ShotHorizontalPos shotHorizontal;
@@ -57,10 +58,14 @@ public class TurnExecutor : NetworkBehaviour
         beaterName = beaterPlayerName;
         goalkeeperName = goalkeeperPlayerName;
         isGoal = goalScored;
+        
+        bool isMiss = precision == PrecisionZone.Miss;
+        isSaved = !isMiss && !goalScored;
+        
         resultMessageShown = false;
         ballCaught = false;
 
-        Debug.Log($"<color=yellow>[TURN EXECUTOR] ExecuteTurn called - IsGoal: {goalScored}, CatchThreshold: {catchProgressThreshold}</color>");
+        Debug.Log($"<color=yellow>[TURN EXECUTOR] ExecuteTurn called - IsGoal: {goalScored}, IsSaved: {isSaved}, IsMiss: {isMiss}</color>");
 
         if (gameController == null)
             gameController = FindFirstObjectByType<GameController>();
@@ -108,9 +113,9 @@ public class TurnExecutor : NetworkBehaviour
                 {
                     float progress = ball.GetTravelProgress();
                     
-                    if (progress >= catchProgressThreshold && !ballCaught && !isGoal)
+                    if (progress >= catchProgressThreshold && !ballCaught && isSaved)
                     {
-                        Debug.Log($"<color=cyan>[ATTACH] Progress: {progress:F2}, Threshold: {catchProgressThreshold}, BallCaught: {ballCaught}, IsGoal: {isGoal}</color>");
+                        Debug.Log($"<color=cyan>[ATTACH] Progress: {progress:F2}, Threshold: {catchProgressThreshold}, BallCaught: {ballCaught}, IsSaved: {isSaved}</color>");
                         ballCaught = true;
                         AttachBallToGoalkeeper();
                     }
@@ -164,7 +169,13 @@ public class TurnExecutor : NetworkBehaviour
 
         if (shotPrecision == PrecisionZone.Miss)
         {
-            Vector3 missTarget = targetManager.GetTargetPosition(ShotHorizontalPos.Right, ShotVerticalPos.Top);
+            ShotHorizontalPos missHorizontal = shotHorizontal;
+            if (shotHorizontal == ShotHorizontalPos.Middle)
+            {
+                missHorizontal = Random.value > 0.5f ? ShotHorizontalPos.Left : ShotHorizontalPos.Right;
+            }
+            
+            Vector3 missTarget = targetManager.GetTargetPosition(missHorizontal, ShotVerticalPos.Top);
             return missTarget + Vector3.up * 2f;
         }
 

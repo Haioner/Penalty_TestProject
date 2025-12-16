@@ -167,8 +167,8 @@ public class GameController : NetworkBehaviour
         
         RPC_HideFinalResultScreen();
         
-        Debug.Log($"<color=cyan>[🔄 REMATCH] Swapping player roles... Players registered: {players.Count}</color>");
-        RPC_SwapRoles();
+        Debug.Log("<color=cyan>[🔄 REMATCH] Reinitializing player roles and positions</color>");
+        RPC_ReinitializePlayersForRematch();
         
         Debug.Log("<color=cyan>[🔄 REMATCH] Calling StartGame...</color>");
         StartGame();
@@ -891,6 +891,24 @@ public class GameController : NetworkBehaviour
             if (roleController != null)
             {
                 roleController.EnableRoleControlsAfterCountdown();
+            }
+        }
+    }
+
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_ReinitializePlayersForRematch()
+    {
+        Debug.Log("<color=magenta>[🔄 REINIT PLAYERS] Reinitializing players for rematch...</color>");
+        
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (PlayerController player in allPlayers)
+        {
+            if (player.Role != PlayerRole.None)
+            {
+                PlayerRole currentRole = player.Role;
+                player.SetRole(currentRole);
+                
+                Debug.Log($"<color=magenta>[🔄 REINIT PLAYERS] Player reinitialized with role: {currentRole}</color>");
             }
         }
     }
