@@ -21,15 +21,18 @@ public class TurnExecutor : NetworkBehaviour
     [Header("Timing")]
     [SerializeField] private float kickDelay = 0.5f;
     [SerializeField][Range(0f, 1f)] private float catchProgressThreshold = 0.7f;
+    [SerializeField][Range(0f, 1f)] private float goalProgressThreshold = 0.8f;
     [SerializeField] private float resultDelay = 2f;
 
     [Networked] private TurnState currentState { get; set; }
     [Networked] private TickTimer stateTimer { get; set; }
+    [Networked] private PlayerRef beaterPlayerRef { get; set; }
     [Networked] private NetworkString<_64> beaterName { get; set; }
     [Networked] private NetworkString<_64> goalkeeperName { get; set; }
     [Networked] private NetworkBool isGoal { get; set; }
     [Networked] private NetworkBool isSaved { get; set; }
     [Networked] private NetworkBool ballCaught { get; set; }
+    [Networked] private NetworkBool goalCounted { get; set; }
 
     private ShotHorizontalPos shotHorizontal;
     private ShotVerticalPos shotVertical;
@@ -45,7 +48,7 @@ public class TurnExecutor : NetworkBehaviour
 
     public void ExecuteTurn(ShotHorizontalPos shotH, ShotVerticalPos shotV, PrecisionZone precision,
                            ShotHorizontalPos diveH, ShotVerticalPos diveV,
-                           string beaterPlayerName, string goalkeeperPlayerName, bool goalScored)
+                           PlayerRef beaterPlayer, string beaterPlayerName, string goalkeeperPlayerName, bool goalScored)
     {
         if (!Object.HasStateAuthority)
             return;
@@ -55,6 +58,7 @@ public class TurnExecutor : NetworkBehaviour
         shotPrecision = precision;
         diveHorizontal = diveH;
         diveVertical = diveV;
+        beaterPlayerRef = beaterPlayer;
         beaterName = beaterPlayerName;
         goalkeeperName = goalkeeperPlayerName;
         isGoal = goalScored;
@@ -64,6 +68,7 @@ public class TurnExecutor : NetworkBehaviour
         
         resultMessageShown = false;
         ballCaught = false;
+        goalCounted = false;
 
         Debug.Log($"<color=yellow>[TURN EXECUTOR] ExecuteTurn called - IsGoal: {goalScored}, IsSaved: {isSaved}, IsMiss: {isMiss}</color>");
 
@@ -118,6 +123,21 @@ public class TurnExecutor : NetworkBehaviour
                         Debug.Log($"<color=cyan>[ATTACH] Progress: {progress:F2}, Threshold: {catchProgressThreshold}, BallCaught: {ballCaught}, IsSaved: {isSaved}</color>");
                         ballCaught = true;
                         AttachBallToGoalkeeper();
+                    }
+                    
+                    if (progress >= goalProgressThreshold && !goalCounted)
+                    {
+                        goalCounted = true;
+                        Debug.Log($"<color=green>[GOAL COUNT] Progress: {progress:F2}, IsGoal: {isGoal}</color>");
+                        
+                        if (isGoal)
+                        {
+                            if (gameController != null)
+                            {
+                                gameController.IncrementScore(beaterPlayerRef, beaterName.ToString());
+                            }
+                            RPC_TriggerCrowdCelebration();
+                        }
                     }
 
                     if (progress >= 1f && !resultMessageShown)
@@ -252,6 +272,22 @@ public class TurnExecutor : NetworkBehaviour
             }
         }
     }
+    
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    private void RPC_TriggerCrowdCelebration()
+    {
+        Debug.Log("<color=green>[RPC CROWD] Gol contado em 80%! Tocando animação da multidão...</color>");
+        
+        CrowdController crowdController = FindFirstObjectByType<CrowdController>();
+        if (crowdController != null)
+        {
+            crowdController.PlayWin();
+        }
+        else
+        {
+            Debug.LogWarning("[RPC CROWD] CrowdController não encontrado!");
+        }
+    }
 
     private void ResetTurn()
     {
@@ -290,5 +326,6 @@ public class TurnExecutor : NetworkBehaviour
         currentState = TurnState.WaitingChoices;
         resultMessageShown = false;
         ballCaught = false;
+        goalCounted = false;
     }
 }

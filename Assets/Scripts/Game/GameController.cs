@@ -593,7 +593,7 @@ public class GameController : NetworkBehaviour
             turnExecutor.ExecuteTurn(
                 beaterChoice.horizontalPos, beaterChoice.verticalPos, beaterChoice.precision,
                 goalKeeperChoice.horizontalPos, goalKeeperChoice.verticalPos,
-                beaterName, goalkeeperName, isGoal
+                beaterPlayer, beaterName, goalkeeperName, isGoal
             );
         }
 
@@ -603,32 +603,30 @@ public class GameController : NetworkBehaviour
         Debug.Log($"[ProcessTurn] Dive: {goalKeeperChoice.horizontalPos}/{goalKeeperChoice.verticalPos}");
         Debug.Log($"[ProcessTurn] Result - Miss: {isMiss}, Saved: {isSaved}, GOAL: {isGoal}");
 
-        if (isGoal)
-        {
-            int beaterPlayerIndex = players.FindIndex(p => p.playerRef == beaterPlayer);
-            
-            int scoreBefore1 = player1Score;
-            int scoreBefore2 = player2Score;
-            
-            if (beaterPlayerIndex == 0)
-            {
-                player1Score++;
-                Debug.Log($"<color=green>[⚽ GOAL!] {beaterName} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
-            }
-            else
-            {
-                player2Score++;
-                Debug.Log($"<color=green>[⚽ GOAL!] {beaterName} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
-            }
-        }
-        else
-        {
-            string reason = isMiss ? "MISSED" : "SAVED";
-            Debug.Log($"<color=yellow>[❌ NO GOAL] {reason}! Score unchanged: {player1Score}-{player2Score}</color>");
-        }
-
         RPC_ShowTurnResult(beaterChoice.horizontalPos, beaterChoice.verticalPos, beaterChoice.precision, 
                           goalKeeperChoice.horizontalPos, goalKeeperChoice.verticalPos, isGoal, isSaved, isMiss);
+    }
+    
+    public void IncrementScore(PlayerRef beaterPlayer, string beaterName)
+    {
+        if (!Object.HasStateAuthority)
+            return;
+            
+        int beaterPlayerIndex = players.FindIndex(p => p.playerRef == beaterPlayer);
+        
+        int scoreBefore1 = player1Score;
+        int scoreBefore2 = player2Score;
+        
+        if (beaterPlayerIndex == 0)
+        {
+            player1Score++;
+            Debug.Log($"<color=green>[⚽ GOAL 80%!] {beaterName} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
+        }
+        else if (beaterPlayerIndex == 1)
+        {
+            player2Score++;
+            Debug.Log($"<color=green>[⚽ GOAL 80%!] {beaterName} scored! Score: {scoreBefore1}-{scoreBefore2} → {player1Score}-{player2Score}</color>");
+        }
     }
 
     public void OnTurnExecutionComplete()
