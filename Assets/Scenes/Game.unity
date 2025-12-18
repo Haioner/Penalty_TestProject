@@ -2787,7 +2787,6 @@ MonoBehaviour:
   rematchWaitingText: {fileID: 1154772142}
   playAgainButton: {fileID: 2138461444}
   leaveRoomButton: {fileID: 1708250131}
-  crowdController: {fileID: 457022915}
   TURN_TIME: 10
   turnExecutor: {fileID: 1112447287}
 --- !u!4 &128779984 stripped
@@ -24112,6 +24111,7 @@ MonoBehaviour:
   gameController: {fileID: 122255612}
   kickDelay: 0.6
   catchProgressThreshold: 0.8
+  goalProgressThreshold: 0.8
   resultDelay: 2
 --- !u!1 &1117451923 stripped
 GameObject:
@@ -32139,7 +32139,7 @@ Transform:
   m_GameObject: {fileID: 1572174519}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 2.95, y: 0, z: -4.19}
+  m_LocalPosition: {x: -3.9999998, y: 0, z: -4.19}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
